@@ -1,3 +1,20 @@
+Welcome to HexQuest!
+
+This is a game that was built primarily using claude code to generate the Javascript and ChatGPT to generate the game documentation to write the code.
+
+The objective is to capture the enemy capital by summoning creatures and capturing territory to increase your power.
+
+When you start, you can play with another person locally, or play against an AI player.
+
+This is a very early stage in development, and I hope to add additional features, creatures, and a better graphical engine (possibly Unreal Engine).
+
+The inspiration for this game is a mixture of Stellaris, Age of Empires, and card games such as Magic the Gathering and Card Wars (from the fictional show Adventure Time!)
+
+Here is a screenshot from the game:
+<img width="1728" height="990" alt="image" src="https://github.com/user-attachments/assets/d9a7c9d5-0c91-4d60-98c9-870c2422e4cd" />
+
+
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

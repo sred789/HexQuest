@@ -1,0 +1,770 @@
+ HEXQUEST – MASTER DESIGN DOCUMENT (Prototype Spec v1.3)
+
+
+
+⸻
+
+
+
+TABLE OF CONTENTS
+
+	1.	Overview
+
+	2.	Components & Definitions
+
+	3.	Map & Terrain
+
+	4.	Fog of War & Vision
+
+	5.	Setup
+
+	6.	Turn Structure
+
+	7.	Movement, ZOC & Stacking
+
+	8.	Combat (Deterministic)
+
+	9.	Capital Siege
+
+	10.	Economy & Command Limit
+
+	11.	Cards & Deck Rules
+
+	12.	Tech System
+
+	13.	Scoring
+
+	14.	Buildings
+
+	15.	Healing
+
+	16.	Tactical Cards
+
+	17.	Tier Unlocks
+
+	18.	Edge-Case Rulings
+
+	19.	Prototyping Conventions
+
+	20.	GameState Schema
+
+	21.	Next Steps
+
+
+
+⸻
+
+
+
+1) OVERVIEW
+
+
+
+HexQuest is a 2-player strategic fantasy game that blends territory control, deterministic tactical combat, and card-driven progression.
+
+
+
+Players compete to expand territory, build infrastructure, deploy units, and defeat each other’s Capital to win.
+
+Games last up to 30 turns and end with either:
+
+	•	Capital destruction (instant win),
+
+	•	80% territory control (instant win), or
+
+	•	Highest Victory Points at Turn 30.
+
+
+
+⸻
+
+
+
+2) COMPONENTS & DEFINITIONS
+
+
+
+Entities
+
+	•	Hexes: the board spaces
+
+	•	Units: persistent combatants
+
+	•	Buildings: infrastructure
+
+	•	Capital: special building with HP + defense
+
+	•	Cards: creatures, buildings, tech, tactical
+
+	•	Players: P1 and P2
+
+
+
+⸻
+
+
+
+3) MAP & TERRAIN
+
+
+
+Board
+
+	•	127 hexes total
+
+
+
+Terrain Types & Combat defense
+
+Terrain
+
+Defense
+
+Movement
+
+Plains
+
++0
+
+1 action
+
+Forest
+
++100
+
+1 action
+
+Mountain
+
++175
+
+2 actions (unless tech)
+
+River
+
++0
+
+1 action
+
+Ruins
+
++0
+
+1 action
+
+
+
+Strategic Objective Hexes
+
+	•	3 designated at setup
+
+	•	Only relevant for scoring
+
+
+
+⸻
+
+
+
+4) FOG OF WAR & VISION
+
+
+
+Vision is asymmetric:
+
+
+
+Owner territory
+
+	•	Full visibility of terrain, units, buildings
+
+
+
+Enemy territory
+
+	•	Visible only within 3 hexes of any hex you control
+
+	•	Outside this radius: unknown/gray
+
+
+
+Unclaimed
+
+	•	Unknown unless in vision radius
+
+
+
+UI may fade color by distance — purely visual.
+
+
+
+⸻
+
+
+
+5) SETUP
+
+
+
+Each player:
+
+	•	Places Capital on opposite edges
+
+	•	Starts with 1 Tier-1 unit on Capital
+
+	•	Energy: P1=5, P2=6 (balance)
+
+	•	Knowledge: 3
+
+	•	Deck: 30 cards
+
+	•	Hand: 5 cards
+
+
+
+Mirrored halves for terrain generation.
+
+
+
+⸻
+
+
+
+6) TURN STRUCTURE
+
+
+
+Start Phase
+
+	1.	UPKEEP (before income):
+
+	•	Command limit check + upkeep
+
+	2.	INCOME:
+
+	•	+1 Energy per controlled hex
+
+	•	Capital: +1 Energy, +1 Knowledge
+
+	•	Knowledge structures
+
+	3.	DRAW:
+
+	•	Draw 2 keep 1
+
+	4.	ACTIONS:
+
+	•	Reset to 4 (max 6 with tech)
+
+	5.	UPDATE:
+
+	•	Tier unlocks based on hex count
+
+
+
+Action Phase
+
+	•	Spend actions on:
+
+MOVE, ATTACK, PLAY_CARD, PLAY_TECH, PLAY_TACTICAL, ACTIVATE_BUILDING, END_TURN
+
+
+
+End Phase
+
+	•	Healing
+
+	•	Discard down to hand limit
+
+	•	Check win conditions
+
+
+
+⸻
+
+
+
+7) MOVEMENT, ZOC & STACKING
+
+
+
+Movement
+
+	•	1 action per hex (mountain = 2)
+
+	•	Max 3 units per hex
+
+	•	Can split stacks before moving
+
+
+
+Zone of Control
+
+	•	Entering adjacency to an enemy stops movement
+
+	•	Units may move away freely at turn start
+
+
+
+Attack interaction
+
+	•	Units that attack cannot move again that turn
+
+
+
+⸻
+
+
+
+8) COMBAT (DETERMINISTIC)
+
+
+
+All combat calculates damage without randomness.
+
+
+
+Defense Value = terrain + adjacency + buildings
+
+	•	terrainDEF: Plains 0, Forest 100, Mountain 175, River 0, Capital 250
+
+	•	adjacencyDEF: +75 per adjacent friendly hex (max 225; 300 with tech)
+
+	•	buildingDEF: Fortification +150 (+50 if fortified with tech)
+
+
+
+Damage = max(0, attackerATK - DefenseValue)
+
+	•	Defender does not strike back
+
+	•	Damage persists
+
+	•	If HP <= 0: defender destroyed, hex may be captured
+
+
+
+River Rule
+
+If defender hex=River and attacker not on River:
+
+	•	attacker ATK -100
+
+
+
+Adjacency Soft Decay
+
+If a unit takes >0 damage this turn:
+
+	•	adjacency bonus in that hex is reduced by 75 until end of attacker’s turn
+
+	•	resets at start of defender’s turn
+
+
+
+⸻
+
+
+
+9) CAPITAL SIEGE
+
+
+
+Capital:
+
+	•	HP: 1600
+
+	•	DEF: +250
+
+	•	Cannot host other buildings
+
+
+
+To attack:
+
+	•	attacker must control 2 adjacent hexes to Capital
+
+
+
+Destroying Capital = instant win.
+
+
+
+⸻
+
+
+
+10) ECONOMY & COMMAND LIMIT
+
+
+
+Resources
+
+	•	Energy for units/buildings
+
+	•	Knowledge for tech
+
+
+
+Income
+
+	•	+1 Energy per hex
+
+	•	Capital: +1 Energy, +1 Knowledge
+
+
+
+Command Limit
+
+	•	floor(controlledHexes/2)
+
+	•	Upkeep: 2 Energy per excess unit
+
+
+
+⸻
+
+
+
+11) CARDS & DECK RULES
+
+	•	30-card deck
+
+	•	Draw 2 keep 1
+
+	•	Hand limit = 7 base (expandable with tech)
+
+	•	Deck exhaustion: reshuffle discard into deck
+
+
+
+Card types
+
+	•	Creature
+
+	•	Building
+
+	•	Tech (no duplicates)
+
+	•	Tactical (max 2 per combat)
+
+
+
+⸻
+
+
+
+12) TECH SYSTEM
+
+	•	Tech costs Knowledge + 1 action
+
+	•	Permanent effect, removed from deck when played
+
+	•	Tier-gated by controlled hex count
+
+
+
+Examples:
+
+	•	Elite Training: +150 ATK (Tier2+)
+
+	•	Siege Doctrine: ignore building DEF
+
+	•	Advanced Formations: adjacency cap 300
+
+	•	Reinforced Structures: +50 building DEF
+
+
+
+⸻
+
+
+
+13) SCORING (TURN 30)
+
+
+
+If no instant win by end of Turn 30:
+
+	•	1 VP per controlled hex
+
+	•	2 VP per building
+
+	•	Tier1 unit = 1 VP, Tier2 = 3, Tier3 = 5
+
+	•	3 VP per Strategic Objective hex
+
+	•	+5 VP if Capital survives
+
+
+
+⸻
+
+
+
+14) BUILDINGS
+
+
+
+Max 1 building per hex (Capital hex cannot host additional buildings)
+
+
+
+Types:
+
+	•	Fortification: +150 DEF
+
+	•	Energy Structure: +2 Energy/turn
+
+	•	Knowledge Structure: +2 Knowledge/turn (+2 if on Ruins)
+
+	•	Healing Structure: +2 HP heal per turn
+
+
+
+⸻
+
+
+
+15) HEALING
+
+
+
+End of each player turn:
+
+	•	Units not attacked this turn heal +1 HP
+
+	•	If on Healing Structure: extra +2 HP
+
+
+
+⸻
+
+
+
+16) TACTICAL CARDS
+
+
+
+Playable only during your own attacks.
+
+Max 2 can affect one combat.
+
+
+
+Examples:
+
+	•	+200 ATK
+
+	•	-150 building DEF
+
+	•	+150 DEF
+
+	•	Heal 300 HP
+
+
+
+⸻
+
+
+
+17) TIER UNLOCKS
+
+
+
+Based on controlled hex count:
+
+	•	Tier 1: 1–7
+
+	•	Tier 2: 8–15
+
+	•	Tier 3: 16+
+
+
+
+Tier gating applies to creature and tech availability.
+
+
+
+⸻
+
+
+
+18) EDGE-CASE RULINGS (FINAL)
+
+	•	Attacker chooses target unit in defended hex.
+
+	•	If enemy building exists without units, entering destroys building and captures hex.
+
+	•	Summoned unit can’t attack until owned turn passes.
+
+	•	Command limit upkeep must be paid at start of turn before income.
+
+	•	Tactical cards for prototype are not reactive; only active player plays them.
+
+
+
+⸻
+
+
+
+19) PROTOTYPING CONVENTIONS
+
+	•	Map is mirrored halves.
+
+	•	Fog based on controlled/vision rules.
+
+	•	River implemented as hex terrain penalty.
+
+	•	Capital hex excluded from additional buildings.
+
+
+HEXQUEST PROTOTYPE SPEC v1.3 (with Vision v1.0)
+
+CORE
+- 2 players. Alternating full turns. Max 30 turns.
+- Instant win if: (a) enemy Capital destroyed OR (b) a player controls >=80% of all hexes.
+- If no instant win by end of Turn 30: score VP (see SCORING).
+
+MAP
+- Board: 127 hexes (hex grid). Terrain types: PLAINS, FOREST, MOUNTAIN, RIVER, RUINS.
+- Terrain combat defense: PLAINS +0, FOREST +100, MOUNTAIN +175, RIVER +0, RUINS +0, CAPITAL +250 (capital hex only).
+- River combat rule (simple): if defender hex terrain=RIVER and attacker’s current hex terrain!=RIVER, attacker ATK -100 (before damage).
+- 3 Strategic Objective hexes are designated at setup (VP only; no active effects).
+
+FOG / VISION
+- Each player always fully sees: all hexes they control (terrain, units, buildings).
+- Each player sees enemy territory only within VISION RADIUS = 3 hexes from ANY hex they control.
+- Outside vision: render as unknown gray (no terrain/units/buildings shown).
+- Unclaimed hexes are unknown gray unless within vision radius (then terrain can be shown if you choose; prototype may keep them gray until claimed—UI choice).
+- “Distance fade” is UI-only: apply fading based on distance 0–3; no gameplay effect.
+
+SETUP
+- Each player places a Capital on opposite edges of the map.
+- Starting resources: P1 Energy=5, Knowledge=3; P2 Energy=6, Knowledge=3 (Player 2 compensation).
+- Each player starts with 1 Tier-1 unit on their Capital.
+- Deck: 30 cards. Starting hand: 5 (draw 2 keep 1 repeatedly until 5, or draw 5 directly—prototype may simplify to draw 5).
+
+TURN STRUCTURE
+Start Phase (in order):
+1) UPKEEP (before income): if unitsOwned > commandLimit, pay 2 Energy per excess unit. If cannot pay, destroy excess units (owner chooses) until affordable.
+2) INCOME: +1 Energy per controlled hex.
+3) CAPITAL INCOME: +1 Energy and +1 Knowledge.
+4) STRUCTURE INCOME: Knowledge structures generate knowledge (see BUILDINGS).
+5) DRAW: draw 2 cards, keep 1, discard the other (to discard pile).
+6) ACTIONS: set actions to 4 base (plus tech), hard cap 6.
+7) TIER UPDATE: recalc tier based on controlled hexes; tier applies immediately.
+
+Action Phase:
+- Spend actions on: MOVE, ATTACK, PLAY_CREATURE, PLAY_BUILDING, PLAY_TECH, PLAY_TACTICAL, ACTIVATE_BUILDING, END_TURN.
+- Each unit may ATTACK at most once per its owner’s turn.
+- If a unit ATTACKS, it cannot MOVE again that turn.
+- Summoned units (played this turn) cannot ATTACK until next turn (“summoning sickness”).
+
+End Phase:
+- HEALING: units not attacked this turn heal +1 HP (up to maxHP). If on a Healing Structure, heal +2 additional.
+- HAND LIMIT: discard down to hand limit 7 (base; upgrades later).
+- Check win conditions.
+
+MOVEMENT / STACKING / ZOC
+- Max 3 units per hex.
+- MOVE (stack): 1 action to move selected units from a hex to an adjacent hex (subject to cap).
+- MOUNTAIN movement cost: moving into a MOUNTAIN hex costs 2 actions (unless a tech changes it).
+- ZOC: when a moving unit enters a hex adjacent to any enemy unit, its movement ends immediately. (Still allowed to attack later if it hasn’t attacked yet.)
+- Disengage: if a unit starts adjacent to enemy, it may move away normally (no penalty).
+
+CONTROL / CAPTURE / BUILDINGS ON CAPTURE
+- A hex is controlled by a player if it contains that player’s units and no enemy units.
+- If a player enters an enemy-controlled hex that contains no enemy units but has an enemy building: capture the hex and DESTROY that building (prototype rule).
+- Capital hex cannot host other buildings.
+
+COMBAT (DETERMINISTIC, NO RETALIATION)
+- ATTACK: costs 1 action; attacker must be adjacent to target hex.
+- Target selection: attacker chooses which defending unit in target hex takes damage.
+- DefenseValue = terrainDEF + adjacencyDEF + buildingDEF (+ capitalDEF if capital hex).
+  - adjacencyDEF = 75 * (# adjacent friendly hexes to target that have >=1 defender’s unit), cap 225; cap 300 if tech “Advanced Formations” is active for defender.
+  - buildingDEF: Fortification +150; if defender has “Reinforced Structures”, buildingDEF +50 (i.e., Fort becomes 200).
+- Damage = max(0, attackerATK - DefenseValue). Apply to defender HP. Defender does not strike back.
+- If damage > 0, apply ADJACENCY SOFT DECAY to that target hex for remainder of attacker’s turn: reduce its adjacency contribution by 75 (min 0), once per hex per turn; resets at start of defender’s next turn.
+- If defender HP <= 0: destroy unit immediately. If no enemy units remain on hex, attacker captures the hex.
+
+CAPITAL SIEGE
+- Capital stats: HP 1600, DEF +250. No retaliation. No extra buildings on capital hex.
+- To ATTACK a Capital, attacker must control at least 2 hexes adjacent to the Capital at the moment of attack.
+- Destroying enemy Capital = instant win.
+
+ECONOMY / COMMAND LIMIT
+- Energy & Knowledge accumulate indefinitely.
+- Income: +1 Energy per controlled hex. Capital adds +1 Energy +1 Knowledge each start phase.
+- CommandLimit = floor(controlledHexes / 2).
+- Upkeep: 2 Energy per unit above limit (paid before income).
+
+TIERS / GATING
+- Tier by controlled hexes: Tier1=1–7, Tier2=8–15, Tier3=16+.
+- Tier gates: stronger creature cards and higher-tier tech cards.
+- Tech duplicates: not allowed (unless explicitly stated).
+
+CARDS
+- Draw: draw 2 keep 1 each turn (discard other).
+- Hand limit: 7 base.
+- Deck empty: reshuffle discard into deck.
+- Tactical cards: playable only during your own attacks; max 2 tactical cards may affect a single combat.
+
+SCORING (TURN 30)
+- If game reaches end of Turn 30 without instant win:
+  - 1 VP per controlled hex
+  - 2 VP per building
+  - Units: Tier1=1 VP, Tier2=3 VP, Tier3=5 VP
+  - 3 VP per objective hex controlled
+  - +5 VP if your Capital survives
+
+TWEAK #1
+add sprites for each creature and add a way to place creatures  
+  on the map by clicking the creature in your hand then           
+  clicking the space where you want it to be placed.  recenter
+  the camera aroud the mouse being clicked and dragged when
+  zoomed in.  make the hexes twice as large with more room for
+  detail.  when you hover the mouse on a creature show a popup
+  of creature details which disappears when you move the mouse
+  away.
+
+
+TWEAK #2
+make sure that a space is selected before any movement action is availble. visually show the 
+selected space. highlight the edges of the captured spaces with the color of the owner.
+hovering over a space should display its attributes.
+give feedback to a user when an action is not available (e.g. No Actions Remaining) 
+instead of sprites, display the creature with the emoji of the creature shown on the creature card.
+
+TWEAK #3
+current player should not be able to see enemies territory on your turn.
+add a name under the emoji.
+make it easier to click on a creature.
+
+TWEAK #4
+should be able to move units individually from each other.  highlight the unit that is clicked on.
+clicking on another unit or a space deselects on unhighlights the previously selected unit.
+all spaces should be larger so the space can contain up to three units and they can be clearly seen.
+the initial view of the map should be zoomed into the current users known spaces plus a little
+of the unknown spaces.  switching player turns resets the zoom for that new user.
+
+TWEAK #5
+give feedback for every unavailable action or card (tech)
+give ability to play building and tactical cards like creature cards by clicking the card 
+and then clicking where you want it to go.
+give feedback for cards successfully played.
+give on screen feedback (over the map near the units) for any action.
+make the log section at the bottom of the screen resizable by hovering over the top separation line 
+and clicking and dragging the size of the log section. the map should surrender or recover all space 
+from the log section.
+
+TWEAK #6
+create an AI to play as player 2. This should be a choice that is asked before the game is loaded. Make sure        
+  the moves the AI opponent makes are not instant and can be tracked by the real player via a log. Also while in      
+  AI mode make sure the player's cards can't be seen by the AI, and the AI cards can't be seen by the player. And     
+   while the AI mode is on, the player shouldn't be able to see their territory, unless the player discovers it       
+  and the AI shouldn't be aware of the territory unless the AI discovers the players territory.
+
+TWEAK #7
+make the borders between hexes thicker, and make the hexes owned by a player have a tint/opacity to cover the       
+  hex to indicate which player (red or blue) has control 

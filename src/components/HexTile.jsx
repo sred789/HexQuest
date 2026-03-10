@@ -1,5 +1,5 @@
 import { hexPointsString } from "../utils/hexUtils";
-import { TERRAIN_COLORS, UNIT_DEFS } from "../utils/gameUtils";
+import { TERRAIN_COLORS, UNIT_DEFS, BUILDING_DEFS } from "../utils/gameUtils";
 
 const CREATURE_EMOJI = {
   scout: "\u2604\ufe0f", warrior: "\u2694\ufe0f", archer: "\ud83c\udff9", knight: "\u265e",
@@ -102,6 +102,19 @@ export default function HexTile({ hex, cx, cy, size, isSelected, isValidTarget, 
           <rect x={cx - size * 0.4} y={cy + size * 0.55} width={size * 0.8 * (hex.capitalHP / 1600)} height={size * 0.08} fill="#4caf50" rx={1} />
         </>
       )}
+
+      {/* Building HP bar (non-capital) */}
+      {visible && hex.building && hex.building !== "capital" && hex.buildingHP > 0 && (() => {
+        const bDef = BUILDING_DEFS[hex.building];
+        const maxHP = bDef?.hp || 400;
+        const hpPct = hex.buildingHP / maxHP;
+        return (
+          <>
+            <rect x={cx - size * 0.3} y={cy - size * 0.08} width={size * 0.6} height={size * 0.06} fill="#333" rx={1} />
+            <rect x={cx - size * 0.3} y={cy - size * 0.08} width={size * 0.6 * hpPct} height={size * 0.06} fill={hpPct > 0.5 ? "#42a5f5" : hpPct > 0.25 ? "#ff9800" : "#f44336"} rx={1} />
+          </>
+        );
+      })()}
 
       {/* Unit emoji sprites */}
       {visible && unitSlots.map((unit, i) => {

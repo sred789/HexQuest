@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { ThemeProvider, createTheme, CssBaseline, Box } from "@mui/material";
 import { hexKey, getNeighbors } from "./utils/hexUtils";
+import { countAdjacentOwned } from "./state/gameActions";
 import { createInitialState, drawInitialHands } from "./state/initGame";
-import { getVisibleHexes, executeStartPhase, keepDrawCard, moveUnits, attackHex, playCreature, playBuilding, playTech, playTactical, endTurn } from "./state/gameActions";
+import { getVisibleHexes, getDiscoveredHexes, updateDiscoveredHexes, executeStartPhase, keepDrawCard, moveUnits, attackHex, playCreature, playBuilding, playTech, playTactical, endTurn } from "./state/gameActions";
 import Board from "./components/Board";
 import PlayerPanel from "./components/PlayerPanel";
 import ActionBar from "./components/ActionBar";
@@ -49,11 +50,36 @@ export default function App() {
 
   const selectedHex = selectedHexKey_ ? game.board[selectedHexKey_] : null;
 
-  // In AI mode, always show P1's fog of war perspective
-  const visibleHexes = useMemo(
-    () => getVisibleHexes(game.board, gameMode === "ai" ? 1 : game.currentTurn),
-    [game.board, game.currentTurn, gameMode]
-  );
+  // In AI mode: show P1's discovered view on P1's turn,
+  // show ONLY AI's owned hexes during AI turn (no discovered/vision range)
+  // In human mode: show current player's discovered view
+  const viewPlayer = gameMode === "ai" ? (game.currentTurn === 2 ? 2 : 1) : game.currentTurn;
+  const visibleHexes = useMemo(() => {
+    if (gameMode === "ai" && game.currentTurn === 2) {
+      // AI turn: only show hexes owned by AI
+      const owned = new Set();
+      for (const [key, hex] of Object.entries(game.board)) {
+        if (hex.owner === 2) owned.add(key);
+      }
+      return owned;
+    }
+    return getDiscoveredHexes(game.board, viewPlayer, game.discoveredHexes?.[viewPlayer]);
+  }, [game.board, viewPlayer, game.discoveredHexes, gameMode, game.currentTurn]);
+
+  // Update discovered hexes whenever board changes
+  useEffect(() => {
+    setGame(g => {
+      const p1Discovered = updateDiscoveredHexes(g, 1);
+      const p2Discovered = updateDiscoveredHexes(g, 2);
+      const oldP1 = g.discoveredHexes?.[1] || [];
+      const oldP2 = g.discoveredHexes?.[2] || [];
+      if (p1Discovered.length === oldP1.length && p2Discovered.length === oldP2.length) return g;
+      return { ...g, discoveredHexes: { 1: p1Discovered, 2: p2Discovered } };
+    });
+  }, [game.board]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track AI focus hex for camera zoom during AI turn
+  const [aiFocusHex, setAiFocusHex] = useState(null);
 
   // AI turn trigger
   useEffect(() => {
@@ -67,12 +93,13 @@ export default function App() {
       (newState) => setGame(newState),
       addFloatingText,
       showNotification,
-      () => setAiRunning(false),
+      () => { setAiRunning(false); setAiFocusHex(null); },
+      setAiFocusHex,
     );
     aiCancelRef.current = cancel;
   }, [gameMode, game.currentTurn, game.phase, game.winner]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Valid move targets
+  // Valid move targets - only show hexes that can be captured
   const validMoveTargets = useMemo(() => {
     if (mode !== "move" || !selectedHex) return [];
     let myUnits = selectedHex.units.filter(u => u.player === game.currentTurn && !u.attackedThisTurn);
@@ -84,11 +111,18 @@ export default function App() {
       if (!hex) return false;
       if (hex.units.some(u => u.player !== game.currentTurn)) return false; // can't move into enemy
       if (hex.units.filter(u => u.player === game.currentTurn).length + myUnits.length > 3) return false;
+      // Block movement to uncapturable territory
+      if (!hex.owner || hex.owner !== game.currentTurn) {
+        // Can't move if enemy building still stands
+        if (hex.building && hex.building !== "capital" && hex.owner && hex.owner !== game.currentTurn && hex.buildingHP > 0) return false;
+        // Need 2 adjacent owned hexes
+        if (countAdjacentOwned(game.board, key, game.currentTurn) < 2) return false;
+      }
       return true;
     });
   }, [mode, selectedHex, game.board, game.currentTurn, selectedUnitId]);
 
-  // Valid attack targets
+  // Valid attack targets - includes hexes with enemy units, capital, or buildings with HP
   const validAttackTargets = useMemo(() => {
     if (mode !== "attack" || !selectedHex) return [];
     let myUnits = selectedHex.units.filter(u => u.player === game.currentTurn && !u.attackedThisTurn && !u.summonedThisTurn);
@@ -98,7 +132,10 @@ export default function App() {
       const key = hexKey(n.q, n.r);
       const hex = game.board[key];
       if (!hex) return false;
-      return hex.units.some(u => u.player !== game.currentTurn) || (hex.building === "capital" && hex.owner !== game.currentTurn && hex.capitalHP > 0);
+      const hasEnemyUnits = hex.units.some(u => u.player !== game.currentTurn);
+      const hasEnemyCapital = hex.building === "capital" && hex.owner !== game.currentTurn && hex.capitalHP > 0;
+      const hasEnemyBuilding = hex.building && hex.building !== "capital" && hex.owner !== game.currentTurn && hex.buildingHP > 0;
+      return hasEnemyUnits || hasEnemyCapital || hasEnemyBuilding;
     });
   }, [mode, selectedHex, game.board, game.currentTurn, selectedUnitId]);
 
@@ -141,7 +178,11 @@ export default function App() {
       if (isValid) {
         const targetHex = game.board[key];
         const targetUnit = targetHex.units.find(u => u.player !== game.currentTurn);
-        const newGame = attackHex(game, selectedHexKey_, key, targetUnit?.id, [], selectedUnitId || undefined);
+        // If no enemy units but building exists, attack the building
+        const targetId = targetUnit?.id
+          || (targetHex.building === "capital" ? null : null)
+          || (targetHex.building && targetHex.building !== "capital" && targetHex.buildingHP > 0 ? "__building__" : null);
+        const newGame = attackHex(game, selectedHexKey_, key, targetId || targetUnit?.id, [], selectedUnitId || undefined);
         setGame(newGame);
         // Determine damage feedback
         if (targetUnit) {
@@ -156,6 +197,14 @@ export default function App() {
           const capAfter = Math.max(0, newGame.board[key].capitalHP);
           const dmg = targetHex.capitalHP - capAfter;
           addFloatingText(hex.q, hex.r, dmg > 0 ? `-${dmg} Capital` : "Blocked!", dmg > 0 ? "#f44336" : "#888");
+        } else if (targetHex.building && targetHex.building !== "capital" && targetHex.buildingHP > 0) {
+          const bHpAfter = Math.max(0, newGame.board[key].buildingHP);
+          const dmg = targetHex.buildingHP - bHpAfter;
+          if (bHpAfter <= 0) {
+            addFloatingText(hex.q, hex.r, "Building Destroyed!", "#f44336");
+          } else {
+            addFloatingText(hex.q, hex.r, dmg > 0 ? `-${dmg} Building` : "Blocked!", dmg > 0 ? "#ff9800" : "#888");
+          }
         }
         setMode(null);
         setSelectedUnitId(null);
@@ -384,6 +433,7 @@ export default function App() {
             onUnitClick={handleUnitClick}
             currentTurn={game.currentTurn}
             floatingTexts={floatingTexts}
+            aiFocusHex={aiFocusHex}
           />
           <PlayerPanel player={game.players[2]} playerNum={2} board={game.board} isActive={game.currentTurn === 2} onCardClick={handleCardClick} hideCards={gameMode === "ai"} />
         </Box>

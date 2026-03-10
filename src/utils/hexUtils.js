@@ -61,4 +61,39 @@ export function hexesInRange(q, r, d, boardKeys) {
   return result;
 }
 
+// Check if a hex is connected to the player's capital via owned territory
+export function isConnectedToCapital(board, hexKey_, player) {
+  // Find capital hex
+  let capitalKey = null;
+  for (const [key, hex] of Object.entries(board)) {
+    if (hex.owner === player && hex.building === "capital") {
+      capitalKey = key;
+      break;
+    }
+  }
+  if (!capitalKey) return false;
+  if (hexKey_ === capitalKey) return true;
+
+  // BFS from capital through owned hexes
+  const visited = new Set();
+  const queue = [capitalKey];
+  visited.add(capitalKey);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    const hex = board[current];
+    if (!hex) continue;
+    const neighbors = getNeighbors(hex.q, hex.r);
+    for (const n of neighbors) {
+      const nKey = hexKey(n.q, n.r);
+      if (visited.has(nKey)) continue;
+      if (!board[nKey] || board[nKey].owner !== player) continue;
+      if (nKey === hexKey_) return true;
+      visited.add(nKey);
+      queue.push(nKey);
+    }
+  }
+  return false;
+}
+
 export { RADIUS };

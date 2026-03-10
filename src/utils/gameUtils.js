@@ -40,10 +40,10 @@ export const UNIT_DEFS = {
 
 // Building definitions
 export const BUILDING_DEFS = {
-  fortification: { name: "Fortification", cost: 5, def: 150, description: "+150 DEF" },
-  energy_structure: { name: "Energy Structure", cost: 6, description: "+2 Energy/turn" },
-  knowledge_structure: { name: "Knowledge Structure", cost: 6, description: "+2 Knowledge/turn (+2 if Ruins)" },
-  healing_structure: { name: "Healing Structure", cost: 5, description: "+2 HP heal/turn" },
+  fortification: { name: "Fortification", cost: 5, def: 150, hp: 500, description: "+150 DEF (500 HP)" },
+  energy_structure: { name: "Energy Structure", cost: 6, hp: 400, description: "+2 Energy/turn (400 HP)" },
+  knowledge_structure: { name: "Knowledge Structure", cost: 6, hp: 400, description: "+2 Knowledge/turn (+2 if Ruins) (400 HP)" },
+  healing_structure: { name: "Healing Structure", cost: 5, hp: 400, description: "+2 HP heal/turn (400 HP)" },
 };
 
 // Tech definitions

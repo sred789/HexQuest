@@ -1,12 +1,12 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { axialToPixel, hexKey } from "../utils/hexUtils";
-import { UNIT_DEFS } from "../utils/gameUtils";
+import { UNIT_DEFS, BUILDING_DEFS } from "../utils/gameUtils";
 import { Box, Typography } from "@mui/material";
 import HexTile from "./HexTile";
 
 const HEX_SIZE = 90;
 
-export default function Board({ board, selectedHex, validMoveTargets, validAttackTargets, visibleHexes, onHexClick, selectedUnitId, onUnitClick, currentTurn, floatingTexts }) {
+export default function Board({ board, selectedHex, validMoveTargets, validAttackTargets, visibleHexes, onHexClick, selectedUnitId, onUnitClick, currentTurn, floatingTexts, aiFocusHex }) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const dragging = useRef(null);
@@ -134,6 +134,34 @@ export default function Board({ board, selectedHex, validMoveTargets, validAttac
     setZoom(Math.max(0.3, Math.min(3, newZoom)));
     setPan({ x: panX, y: panY });
   }, [currentTurn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Zoom to AI focus hex during AI turn (only if visible to player)
+  useEffect(() => {
+    if (!aiFocusHex) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const focusKey = hexKey(aiFocusHex.q, aiFocusHex.r);
+    // Only zoom if the hex is visible (discovered) to the player
+    if (!visibleHexes.has(focusKey)) return;
+
+    const vbW = maxX - minX + 80;
+    const vbH = maxY - minY + 80;
+    const vbCx = minX - 40 + vbW / 2;
+    const vbCy = minY - 40 + vbH / 2;
+
+    const { x: fx, y: fy } = axialToPixel(aiFocusHex.q, aiFocusHex.r, HEX_SIZE);
+
+    const rect = container.getBoundingClientRect();
+    const s = Math.min(rect.width / vbW, rect.height / vbH);
+
+    const newZoom = 1.8;
+    const panX = -(fx - vbCx) * s;
+    const panY = -(fy - vbCy) * s;
+
+    setZoom(Math.max(0.3, Math.min(3, newZoom)));
+    setPan({ x: panX, y: panY });
+  }, [aiFocusHex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const moveSet = new Set(validMoveTargets.map(t => hexKey(t.q, t.r)));
   const attackSet = new Set(validAttackTargets.map(t => hexKey(t.q, t.r)));
@@ -270,6 +298,7 @@ export default function Board({ board, selectedHex, validMoveTargets, validAttac
             <Typography sx={{ fontSize: "0.7rem", color: "#ccc" }}>
               Building: {hexTooltip.hex.building.replace(/_/g, " ")}
               {hexTooltip.hex.building === "capital" && hexTooltip.hex.capitalHP > 0 && ` (${hexTooltip.hex.capitalHP} HP)`}
+              {hexTooltip.hex.building !== "capital" && hexTooltip.hex.buildingHP > 0 && ` (${hexTooltip.hex.buildingHP}/${BUILDING_DEFS[hexTooltip.hex.building]?.hp || 0} HP)`}
             </Typography>
           )}
           {hexTooltip.hex.isObjective && (

@@ -13,6 +13,7 @@ export default function HexInfo({ hex, visible }) {
         ({hex.q},{hex.r}) {hex.terrain} {hex.isObjective ? "\u2605" : ""} | Owner: P{hex.owner || "-"}
         {hex.building ? ` | Building: ${hex.building}` : ""}
         {hex.capitalHP > 0 ? ` | Capital HP: ${hex.capitalHP}/1600` : ""}
+        {hex.building && hex.building !== "capital" && hex.buildingHP > 0 ? ` | Building HP: ${hex.buildingHP}` : ""}
       </Typography>
       {hex.units.length > 0 && (
         <Typography variant="caption" sx={{ color: "#ccc" }}>

@@ -1,4 +1,4 @@
-import { hexKey, getNeighbors, hexesInRange } from "../utils/hexUtils";
+import { hexKey, getNeighbors, hexesInRange, isConnectedToCapital } from "../utils/hexUtils";
 import { TERRAIN_DEF, TERRAIN_MOVE_COST, UNIT_DEFS, BUILDING_DEFS } from "../utils/gameUtils";
 
 // Count controlled hexes
@@ -34,6 +34,35 @@ export function getVisibleHexes(board, player) {
     }
   }
   return visible;
+}
+
+// Get all hexes a player has ever seen (visible now + previously discovered)
+export function getDiscoveredHexes(board, player, discoveredHexes) {
+  const currentlyVisible = getVisibleHexes(board, player);
+  const discovered = new Set(discoveredHexes || []);
+  for (const k of currentlyVisible) discovered.add(k);
+  return discovered;
+}
+
+// Update discovered hexes for a player based on current vision
+export function updateDiscoveredHexes(state, player) {
+  const visible = getVisibleHexes(state.board, player);
+  const existing = new Set(state.discoveredHexes?.[player] || []);
+  for (const k of visible) existing.add(k);
+  return [...existing];
+}
+
+// Count adjacent hexes owned by player for capture requirement
+export function countAdjacentOwned(board, hexKey_, player) {
+  const hex = board[hexKey_];
+  if (!hex) return 0;
+  const neighbors = getNeighbors(hex.q, hex.r);
+  let count = 0;
+  for (const n of neighbors) {
+    const nHex = board[hexKey(n.q, n.r)];
+    if (nHex && nHex.owner === player) count++;
+  }
+  return count;
 }
 
 // Check if capital alive
@@ -178,6 +207,21 @@ export function moveUnits(state, fromKey, toKey, unitIds) {
   // Cannot move into hex with enemy units (must attack instead)
   if (to.units.some(u => u.player !== p)) return s;
 
+  // Block movement to uncapturable territory
+  if (!to.owner || to.owner !== p) {
+    // Check if enemy building blocks capture
+    if (to.building && to.building !== "capital" && to.owner && to.owner !== p && to.buildingHP > 0) {
+      s.log = [...s.log, `Cannot move - enemy ${to.building} must be destroyed first`];
+      return s;
+    }
+    // Need 2 adjacent owned hexes to capture
+    const adjOwned = countAdjacentOwned(s.board, hexKey(to.q, to.r), p);
+    if (adjOwned < 2) {
+      s.log = [...s.log, `Cannot move - need 2 adjacent owned hexes to capture territory (have ${adjOwned})`];
+      return s;
+    }
+  }
+
   const movedUnits = [];
   for (const uid of unitIds) {
     const idx = from.units.findIndex(u => u.id === uid && u.player === p && !u.attackedThisTurn);
@@ -190,13 +234,14 @@ export function moveUnits(state, fromKey, toKey, unitIds) {
 
   if (movedUnits.length === 0) return s;
 
-  // Capture empty hex
+  // Capture the hex (already validated above)
   if (!to.owner || to.owner !== p) {
     if (to.units.length === 0) {
       // Destroy enemy building if present
       if (to.building && to.building !== "capital" && to.owner && to.owner !== p) {
         s.log = [...s.log, `P${p} destroyed enemy ${to.building} at (${to.q},${to.r})`];
         to.building = null;
+        to.buildingHP = 0;
       }
       to.owner = p;
     }
@@ -306,7 +351,18 @@ export function attackHex(state, attackerHexKey, targetHexKey, targetUnitId, tac
 
   // Apply damage
   let targetDestroyed = false;
-  if (targetUnitId && defHex.units.length > 0) {
+  if (targetUnitId === "__building__" && defHex.building && defHex.building !== "capital" && defHex.buildingHP > 0) {
+    // Attack building directly
+    defHex.buildingHP -= damage;
+    const bDef = BUILDING_DEFS[defHex.building];
+    const bName = bDef?.name || defHex.building;
+    s.log = [...s.log, `P${p} ${attacker.type} attacks ${bName}: ${atkValue} ATK vs ${def} DEF = ${damage} damage (Building HP: ${Math.max(0, defHex.buildingHP)}/${bDef?.hp || 0})`];
+    if (defHex.buildingHP <= 0) {
+      s.log = [...s.log, `${bName} destroyed!`];
+      defHex.building = null;
+      defHex.buildingHP = 0;
+    }
+  } else if (targetUnitId && targetUnitId !== "__building__" && defHex.units.length > 0) {
     // Attack specific unit
     const tIdx = defHex.units.findIndex(u => u.id === targetUnitId);
     if (tIdx >= 0) {
@@ -333,6 +389,17 @@ export function attackHex(state, attackerHexKey, targetHexKey, targetUnitId, tac
       defHex.units.shift();
       targetDestroyed = true;
     }
+  } else if (defHex.building && defHex.building !== "capital" && defHex.buildingHP > 0) {
+    // No units, attack building automatically
+    defHex.buildingHP -= damage;
+    const bDef = BUILDING_DEFS[defHex.building];
+    const bName = bDef?.name || defHex.building;
+    s.log = [...s.log, `P${p} ${attacker.type} attacks ${bName}: ${atkValue} ATK vs ${def} DEF = ${damage} damage (Building HP: ${Math.max(0, defHex.buildingHP)}/${bDef?.hp || 0})`];
+    if (defHex.buildingHP <= 0) {
+      s.log = [...s.log, `${bName} destroyed!`];
+      defHex.building = null;
+      defHex.buildingHP = 0;
+    }
   }
 
   // Adjacency soft decay
@@ -340,13 +407,23 @@ export function attackHex(state, attackerHexKey, targetHexKey, targetUnitId, tac
     defHex.adjacencyDecay = (defHex.adjacencyDecay || 0) + 75;
   }
 
-  // Capture if no enemy units left
+  // Capture if no enemy units left AND no standing building AND 2 adjacent owned hexes
   if (defHex.units.filter(u => u.player !== p).length === 0 && defHex.owner !== p) {
     if (defHex.building !== "capital" || defHex.capitalHP <= 0) {
-      defHex.owner = p;
-      if (defHex.building && defHex.building !== "capital") {
-        s.log = [...s.log, `Captured hex and destroyed ${defHex.building}`];
-        defHex.building = null;
+      // Can't capture if building still stands
+      if (defHex.building && defHex.building !== "capital" && defHex.buildingHP > 0) {
+        // Building still alive, don't capture
+      } else {
+        // Need 2 adjacent owned hexes for ALL territory captures
+        const adjOwned = countAdjacentOwned(s.board, hexKey(defHex.q, defHex.r), p);
+        if (adjOwned >= 2) {
+          defHex.owner = p;
+          if (defHex.building && defHex.building !== "capital") {
+            s.log = [...s.log, `Captured hex and destroyed ${defHex.building}`];
+            defHex.building = null;
+            defHex.buildingHP = 0;
+          }
+        }
       }
     }
   }
@@ -371,6 +448,12 @@ export function playCreature(state, cardId, hexKey_) {
   const hex = s.board[hexKey_];
   if (!hex || hex.owner !== p) return s;
   if (hex.units.filter(u => u.player === p).length >= 3) return s;
+
+  // Cannot summon on island territory (disconnected from capital)
+  if (!isConnectedToCapital(s.board, hexKey_, p)) {
+    s.log = [...s.log, `Cannot summon on disconnected territory - must be connected to Capital`];
+    return s;
+  }
 
   // Tier check
   const controlled = countControlled(s.board, p);
@@ -415,12 +498,20 @@ export function playBuilding(state, cardId, hexKey_) {
   const hex = s.board[hexKey_];
   if (!hex || hex.owner !== p || hex.building) return s;
 
+  // Cannot build on island territory (disconnected from capital)
+  if (!isConnectedToCapital(s.board, hexKey_, p)) {
+    s.log = [...s.log, `Cannot build on disconnected territory - must be connected to Capital`];
+    return s;
+  }
+
   if (player.energy < card.cost) {
     s.log = [...s.log, `Not enough Energy (need ${card.cost})`];
     return s;
   }
 
   hex.building = card.buildingKey;
+  const bDef = BUILDING_DEFS[card.buildingKey];
+  hex.buildingHP = bDef?.hp || 400;
   player.energy -= card.cost;
   player.hand.splice(cardIdx, 1);
   player.discard.push(card);

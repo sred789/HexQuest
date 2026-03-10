@@ -15,7 +15,7 @@ function actionDelay() {
   return delay(DELAY_ACTION_MIN + Math.random() * (DELAY_ACTION_MAX - DELAY_ACTION_MIN));
 }
 
-export function executeAiTurn(game, setGame, addFloatingText, showNotification, onComplete) {
+export function executeAiTurn(game, setGame, addFloatingText, showNotification, onComplete, setAiFocusHex) {
   let cancelled = false;
   let state = JSON.parse(JSON.stringify(game));
 
@@ -45,6 +45,15 @@ export function executeAiTurn(game, setGame, addFloatingText, showNotification, 
 
         const action = aiPlanNextAction(state);
         if (!action || action.type === "endTurn") break;
+
+        // Set focus hex for camera zoom during AI action
+        if (setAiFocusHex) {
+          const focusKey = action.to || action.hexKey;
+          if (focusKey && state.board[focusKey]) {
+            const fHex = state.board[focusKey];
+            setAiFocusHex({ q: fHex.q, r: fHex.r });
+          }
+        }
 
         const prevState = state;
         state = executeAction(state, action, addFloatingText);
@@ -92,8 +101,14 @@ function executeAction(state, action, addFloatingText) {
       if (newState.actionsLeft < state.actionsLeft) {
         const hex = newState.board[action.to];
         if (hex) {
-          // Check if target was killed
-          if (action.targetUnitId) {
+          if (action.targetUnitId === "__building__") {
+            // Check if building was destroyed
+            if (!hex.building || hex.buildingHP <= 0) {
+              addFloatingText(hex.q, hex.r, "AI Destroyed Building!", "#f44336");
+            } else {
+              addFloatingText(hex.q, hex.r, "AI Hit Building", "#ff9800");
+            }
+          } else if (action.targetUnitId) {
             const targetStillAlive = hex.units.some(u => u.id === action.targetUnitId);
             if (!targetStillAlive) {
               addFloatingText(hex.q, hex.r, "AI Kill!", "#f44336");

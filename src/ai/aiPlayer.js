@@ -1,6 +1,6 @@
-import { hexKey, getNeighbors, hexDistance } from "../utils/hexUtils";
-import { TERRAIN_DEF, TERRAIN_MOVE_COST, UNIT_DEFS } from "../utils/gameUtils";
-import { getVisibleHexes, countControlled, countUnits, commandLimit, getTier } from "../state/gameActions";
+import { hexKey, getNeighbors, hexDistance, isConnectedToCapital } from "../utils/hexUtils";
+import { TERRAIN_DEF, TERRAIN_MOVE_COST, UNIT_DEFS, BUILDING_DEFS } from "../utils/gameUtils";
+import { getVisibleHexes, countControlled, countUnits, commandLimit, getTier, countAdjacentOwned } from "../state/gameActions";
 
 const AI_PLAYER = 2;
 
@@ -106,6 +106,20 @@ export function aiPlanNextAction(game) {
         });
       }
 
+      // Attack enemy building (non-capital)
+      if (nHex.building && nHex.building !== "capital" && nHex.owner === 1 && nHex.buildingHP > 0 && enemyUnits.length === 0) {
+        const attacker = myUnits[0];
+        const damage = estimateDamage(game, hex, nHex, attacker, p);
+        let score = 4;
+        if (damage >= nHex.buildingHP) score += 6; // will destroy building
+        if (damage > 0) score += 2;
+        if (damage <= 0) score -= 3;
+        candidates.push({
+          type: "attack", score,
+          from: key, to: nKey, targetUnitId: "__building__", attackerUnitId: attacker.id,
+        });
+      }
+
       // Attack capital
       if (nHex.building === "capital" && nHex.owner === 1 && nHex.capitalHP > 0 && enemyUnits.length === 0) {
         const capNeighbors = getNeighbors(nHex.q, nHex.r);
@@ -147,11 +161,24 @@ export function aiPlanNextAction(game) {
         // cost is 1
       } else if (game.actionsLeft < moveCost) continue;
 
+      // Skip uncapturable territory entirely - units can't move there
+      if (!nHex.owner || nHex.owner !== AI_PLAYER) {
+        // Can't move if enemy building still stands
+        if (nHex.building && nHex.building !== "capital" && nHex.owner === 1 && nHex.buildingHP > 0) continue;
+        // Need 2 adjacent owned hexes
+        const adjOwned = countAdjacentOwned(game.board, nKey, AI_PLAYER);
+        if (adjOwned < 2) continue;
+      }
+
       let score = 0;
       // Expansion: unclaimed hex
-      if (!nHex.owner) score += 3;
+      if (!nHex.owner) {
+        score += 3;
+      }
       // Capture empty enemy hex
-      else if (nHex.owner === 1 && nHex.units.filter(u => u.player === 1).length === 0) score += 4;
+      else if (nHex.owner === 1 && nHex.units.filter(u => u.player === 1).length === 0) {
+        score += 4;
+      }
       // Objective
       if (nHex.isObjective && nHex.owner !== AI_PLAYER) score += 6;
 
@@ -191,6 +218,8 @@ export function aiPlanNextAction(game) {
         const hex = game.board[key];
         if (hex.owner !== AI_PLAYER) continue;
         if (hex.units.filter(u => u.player === AI_PLAYER).length >= 3) continue;
+        // Cannot summon on island territory
+        if (!isConnectedToCapital(game.board, key, AI_PLAYER)) continue;
 
         let placeScore = 0;
         // Near front: adjacent to non-owned hexes
@@ -227,6 +256,8 @@ export function aiPlanNextAction(game) {
     for (const key of Object.keys(game.board)) {
       const hex = game.board[key];
       if (hex.owner !== AI_PLAYER || hex.building) continue;
+      // Cannot build on island territory
+      if (!isConnectedToCapital(game.board, key, AI_PLAYER)) continue;
 
       let score = 0;
       if (card.buildingKey === "energy_structure") {

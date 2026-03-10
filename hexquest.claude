@@ -768,3 +768,22 @@ create an AI to play as player 2. This should be a choice that is asked before t
 TWEAK #7
 make the borders between hexes thicker, and make the hexes owned by a player have a tint/opacity to cover the       
   hex to indicate which player (red or blue) has control 
+
+TWEAK #8
+add a feature that in order to capture a new hex, you need to have 2 of your own hexes surrounding the new hex
+Territory with buildings can’t be captured until building is destroyed 
+when enemy turn, zoom in to their territory to see the action they are doing, but don't reveal any territory that isn't discovered by the other player.
+uncovered territory stays uncovered after the first time it's found.
+buildings need health
+Units and buildings cannot be summoned on island territory
+Buildings need to have health and units should be able to attack them to take away their health
+
+TWEAK #8.1
+ the player and AI can both capture territories without having two friendly captured territories. Please make sure the 
+ territories can only be captured if surrounded by 2 friendly territories. Also the player should start with 2          
+territories captured next to their captital. Also during the AI turn, the human should be switched to the AI view and   
+only be able to see what the AI has captured and what the AI is doing. Please fix/add these features
+
+TWEAK #8.2
+make it so that units can't move to a territory if the territory can't be captured
+when its the other player's turn, make sure the only visible territories in the AI view is the territories that the AI owns 
